@@ -1,0 +1,23 @@
+# PDF Analyzer Dependencies
+# Install with: pip install -r pdf_analyzer_requirements.txt
+
+# Core PDF processing libraries
+pypdf>=3.0.0
+PyMuPDF>=1.23.0
+pdfplumber>=0.9.0
+
+# Optional: For better PDF processing
+# pikepdf>=8.0.0  # Alternative PDF library
+# pdfminer.six>=20221105  # Another PDF processing option
+
+# Progress bars and utilities
+tqdm>=4.65.0
+
+# JSON handling (built-in, but good to be explicit)
+# json  # Built-in module
+
+# Path handling (built-in, but good to be explicit)  
+# pathlib  # Built-in module
+
+# Logging (built-in, but good to be explicit)
+# logging  # Built-in module
