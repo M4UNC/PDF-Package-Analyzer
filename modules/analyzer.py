@@ -212,7 +212,7 @@ class PDFAnalyzer:
         # Determine recommended package
         if total_errors == 0:
             # No errors - default to pypdf
-            result.recommended_package = "pypdf"
+            result.recommended_package = "Any"
         else:
             # Find package with least errors
             min_errors = min(package_errors.values())
@@ -224,6 +224,8 @@ class PDFAnalyzer:
                 # Prefer pypdf if it's among the best, otherwise use the first best
                 if "pypdf" in best_packages:
                     result.recommended_package = "pypdf"
+                elif "pdfplumber" in best_packages:
+                    result.recommended_package = "pdfplumber"
                 else:
                     result.recommended_package = best_packages[0]
         
@@ -384,6 +386,56 @@ class PDFAnalyzer:
         
         return {pkg: (count, (count / total) * 100) for pkg, count in stats.items()}
 
+    def _get_package_error_stats(self) -> Dict[str, Dict[str, Any]]:
+        """Aggregate per-package error statistics across all results.
+
+        Returns a mapping:
+            {
+              "pypdf": {"total_errors": int, "files_with_errors": int, "files_with_errors_pct": float},
+              "PyMuPDF": {...},
+              "pdfplumber": {...}
+            }
+        """
+        packages = ["pypdf", "PyMuPDF", "pdfplumber"]
+        totals = {pkg: {"total_errors": 0, "files_with_errors": 0} for pkg in packages}
+        total_files = len(self.results)
+
+        if total_files == 0:
+            return {pkg: {"total_errors": 0, "files_with_errors": 0, "files_with_errors_pct": 0.0} for pkg in packages}
+
+        for result in self.results:
+            for pkg, lib_result in [("pypdf", result.pypdf_result), ("PyMuPDF", result.pymupdf_result), ("pdfplumber", result.pdfplumber_result)]:
+                if not lib_result:
+                    # Library not run/available for this file; skip
+                    continue
+
+                # Compute error_count using the same rules as _evaluate_pdf
+                error_count = 0
+                has_file_errors = False
+                if lib_result.get("success"):
+                    errors_len = len(lib_result.get("errors", []))
+                    warnings_len = len(lib_result.get("warnings", []))
+                    error_count += warnings_len
+                    error_count += errors_len
+                    # "files with errors" should trigger on at least one error; warnings don't count here
+                    if errors_len > 0:
+                        has_file_errors = True
+                else:
+                    # Failed library counts as 5 errors and counts as file with errors
+                    error_count = 5
+                    has_file_errors = True
+
+                totals[pkg]["total_errors"] += error_count
+                if has_file_errors:
+                    totals[pkg]["files_with_errors"] += 1
+
+        # Add percentages
+        for pkg in packages:
+            files_with_errors = totals[pkg]["files_with_errors"]
+            totals[pkg]["files_with_errors_pct"] = (files_with_errors / total_files * 100) if total_files > 0 else 0.0
+
+        return totals
+
     def _format_problematic_file_details(self, result: PDFTestResult) -> List[str]:
         """Format detailed information for a problematic file."""
         lines = [
@@ -438,21 +490,68 @@ class PDFAnalyzer:
         stats = self._get_summary_stats()
         package_stats = self._get_package_recommendation_stats_with_percentages()
         full_summary_lines.extend([
-            f"Total PDF files analyzed: {stats['total']}",
+            f"Libraries available:",
+            f"  pypdf: {'✓' if PYPDF_AVAILABLE else '✗'}",
+            f"  PyMuPDF: {'✓' if PYMUPDF_AVAILABLE else '✗'}",
+            f"  pdfplumber: {'✓' if PDFPLUMBER_AVAILABLE else '✗'}",
+            f"\nTotal PDF files analyzed: {stats['total']}",
             f"Excellent (0 errors): {stats['excellent']}",
             f"Good (1-3 errors): {stats['good']}",
             f"Problematic (4-8 errors): {stats['problematic']}",
             f"Failed (9+ errors): {stats['failed']}",
-            f"\nPackage recommendations:",
-            f"  pypdf: {package_stats['pypdf'][0]} files ({package_stats['pypdf'][1]:.1f}%)",
-            f"  PyMuPDF: {package_stats['PyMuPDF'][0]} files ({package_stats['PyMuPDF'][1]:.1f}%)",
-            f"  pdfplumber: {package_stats['pdfplumber'][0]} files ({package_stats['pdfplumber'][1]:.1f}%)",
-            f"  Other: {package_stats['Other'][0]} files ({package_stats['Other'][1]:.1f}%)",
-            f"\nLibraries available:",
-            f"  pypdf: {'✓' if PYPDF_AVAILABLE else '✗'}",
-            f"  PyMuPDF: {'✓' if PYMUPDF_AVAILABLE else '✗'}",
-            f"  pdfplumber: {'✓' if PDFPLUMBER_AVAILABLE else '✗'}"
+            f"\nPackage Stats:",
+            f"-----------------------------------",
+            f"Package Recommendations:",
+            "__PACKAGE_RECOMMENDATIONS__",
+            f"\nPackage Total Errors:",
+            # Placeholder lines, will be replaced after computing stats
+            "__PACKAGE_TOTAL_ERRORS__",
+            f"\nPackage Files with Errors:",
+            # Placeholder lines, will be replaced after computing stats
+            "__PACKAGE_FILES_WITH_ERRORS__"
         ])
+
+        # Compute per-package error stats and splice into the summary
+        pkg_error_stats = self._get_package_error_stats()
+
+        # Build package recommendations block dynamically
+        preferred_order = ["Any", "pypdf", "PyMuPDF", "pdfplumber", "Other"]
+        seen = set()
+        recommendation_lines = []
+        for key in preferred_order:
+            if key in package_stats:
+                count, pct = package_stats[key]
+                recommendation_lines.append(f"  {key}: {count} files ({pct:.1f}%)")
+                seen.add(key)
+        # Append any other keys deterministically
+        for key in sorted(k for k in package_stats.keys() if k not in seen):
+            count, pct = package_stats[key]
+            recommendation_lines.append(f"  {key}: {count} files ({pct:.1f}%)")
+
+        total_errors_lines = [
+            f"  pypdf: {pkg_error_stats['pypdf']['total_errors']} errors",
+            f"  PyMuPDF: {pkg_error_stats['PyMuPDF']['total_errors']} errors",
+            f"  pdfplumber: {pkg_error_stats['pdfplumber']['total_errors']} errors",
+        ]
+        files_with_errors_lines = [
+            f"  pypdf: {pkg_error_stats['pypdf']['files_with_errors']} files ({pkg_error_stats['pypdf']['files_with_errors_pct']:.1f}%)",
+            f"  PyMuPDF: {pkg_error_stats['PyMuPDF']['files_with_errors']} files ({pkg_error_stats['PyMuPDF']['files_with_errors_pct']:.1f}%)",
+            f"  pdfplumber: {pkg_error_stats['pdfplumber']['files_with_errors']} files ({pkg_error_stats['pdfplumber']['files_with_errors_pct']:.1f}%)",
+        ]
+
+        # Replace placeholders with actual lines
+        def replace_placeholder(lines: List[str], placeholder: str, replacement_block: List[str]) -> List[str]:
+            new_lines = []
+            for line in lines:
+                if line == placeholder:
+                    new_lines.extend(replacement_block)
+                else:
+                    new_lines.append(line)
+            return new_lines
+
+        full_summary_lines = replace_placeholder(full_summary_lines, "__PACKAGE_RECOMMENDATIONS__", recommendation_lines)
+        full_summary_lines = replace_placeholder(full_summary_lines, "__PACKAGE_TOTAL_ERRORS__", total_errors_lines)
+        full_summary_lines = replace_placeholder(full_summary_lines, "__PACKAGE_FILES_WITH_ERRORS__", files_with_errors_lines)
         
         problematic_files = [r for r in self.results if r.overall_score < 0.7]
         if problematic_files:
