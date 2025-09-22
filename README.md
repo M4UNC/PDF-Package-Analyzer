@@ -42,7 +42,7 @@ pdf-package-analyzer/
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/jluster96/PDF-Package-Analyzer.git
 cd pdf-analyzer
 
 # Install dependencies
@@ -56,7 +56,7 @@ uv run main.py
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/jluster96/PDF-Package-Analyzer.git
 cd pdf-analyzer
 
 # Create virtual environment
