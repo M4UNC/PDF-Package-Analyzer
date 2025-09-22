@@ -78,10 +78,11 @@ class PDFTestResult:
 class PDFAnalyzer:
     """Main PDF analysis class."""
     
-    def __init__(self, books_dir: str = "library/books", info_dir: str = None, timeout_seconds: int = 30, verbose: bool = False):
+    def __init__(self, books_dir: str = "library/books", info_dir: str = None, timeout_seconds: int = 30, verbose: bool = False, limit: int = None):
         self.books_dir = Path(books_dir)
         self.results = []
         self.timeout_seconds = timeout_seconds
+        self.limit = limit
         
         # Check if books directory exists
         if not self.books_dir.exists():
@@ -466,15 +467,19 @@ class PDFAnalyzer:
             self.logger.warning(f"No PDF files found in {self.books_dir}")
             return []
         
-        self.logger.info(f"Found {len(pdf_files)} PDF files to analyze")
+        # Apply limit if specified
+        if self.limit is not None:
+            pdf_files = pdf_files[:self.limit]
+            self.logger.info(f"Found {len(list(self.books_dir.glob('*.pdf')))} PDF files total, processing first {len(pdf_files)} files")
+        else:
+            self.logger.info(f"Found {len(pdf_files)} PDF files to analyze")
         
-        # Use tqdm for progress bar
-        with tqdm(total=len(pdf_files), desc="Analyzing PDFs", unit="file") as pbar:
+        # Use tqdm for progress bar with filename display
+        with tqdm(total=len(pdf_files), desc="Analyzing PDFs", unit="file", 
+                 bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}',
+                 leave=True, dynamic_ncols=True) as pbar:
             for pdf_file in pdf_files:
                 try:
-                    # Update progress bar with current filename
-                    pbar.set_postfix(file=os.path.basename(pdf_file)[:30] + "..." if len(os.path.basename(pdf_file)) > 30 else os.path.basename(pdf_file))
-                    
                     result = self.analyze_pdf(str(pdf_file))
                     self.results.append(result)
                     
@@ -645,13 +650,14 @@ def main():
     parser.add_argument("--report_output", default="pdf_analysis_report.json", help="Output report file")
     parser.add_argument("--summary_output", help="Output summary file")
     parser.add_argument("--timeout", type=int, default=30, help="Timeout in seconds for each PDF library test (default: 30)")
+    parser.add_argument("--limit", type=int, help="Limit the number of PDF documents to process (default: process all)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
     
     args = parser.parse_args()
     
     try:
         # Create analyzer (logging is set up in the constructor)
-        analyzer = PDFAnalyzer(args.books_dir, info_dir=args.info_dir, timeout_seconds=args.timeout, verbose=args.verbose)
+        analyzer = PDFAnalyzer(args.books_dir, info_dir=args.info_dir, timeout_seconds=args.timeout, verbose=args.verbose, limit=args.limit)
         logger = analyzer.logger
         
         # Analyze all PDFs
