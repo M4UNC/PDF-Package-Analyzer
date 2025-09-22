@@ -17,3 +17,6 @@ wheels/
 
 # PDF files
 library/
+
+# Dev
+dev/
