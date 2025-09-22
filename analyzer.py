@@ -23,11 +23,12 @@ from utils import run_with_timeout
 class PDFAnalyzer:
     """Main PDF analysis class."""
     
-    def __init__(self, books_dir: str = "library/books", info_dir: str = None, timeout_seconds: int = 30, verbose: bool = False, limit: int = None):
+    def __init__(self, books_dir: str = "library/books", info_dir: str = None, timeout_seconds: int = 30, verbose: bool = False, limit: int = None, quiet: str = None):
         self.books_dir = Path(books_dir)
         self.results = []
         self.timeout_seconds = timeout_seconds
         self.limit = limit
+        self.quiet = quiet
         
         # Check if books directory exists
         if not self.books_dir.exists():
@@ -56,18 +57,19 @@ class PDFAnalyzer:
         # Create formatter
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         
-        # File handler - output to info directory
+        # File handler - output to info directory (always enabled)
         log_file = self.info_dir / 'pdf_test_results.log'
         file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(log_level)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
         
-        # Console handler
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(log_level)
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
+        # Console handler - conditionally enabled based on quiet flag
+        if self.quiet not in ["logs", "all"]:
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(log_level)
+            console_handler.setFormatter(formatter)
+            logger.addHandler(console_handler)
         
         return logger
     
@@ -255,23 +257,35 @@ class PDFAnalyzer:
         else:
             self.logger.info(f"Found {len(pdf_files)} PDF files to analyze")
         
-        # Use tqdm for progress bar with filename display
-        with tqdm(total=len(pdf_files), desc="Analyzing PDFs", unit="file", 
-                 bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}',
-                 leave=True, dynamic_ncols=True) as pbar:
+        # Use tqdm for progress bar with filename display (conditionally based on quiet flag)
+        if self.quiet not in ["progress", "all"]:
+            # Show progress bar
+            with tqdm(total=len(pdf_files), desc="Analyzing PDFs", unit="file", 
+                     bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}',
+                     leave=True, dynamic_ncols=True) as pbar:
+                for pdf_file in pdf_files:
+                    try:
+                        result = self.analyze_pdf(str(pdf_file))
+                        self.results.append(result)
+                        
+                        # Update progress
+                        pbar.update(1)
+                        
+                    except Exception as e:
+                        self.logger.error(f"Failed to analyze {pdf_file}: {e}")
+                        traceback.print_exc()
+                        # Still update progress even if file failed
+                        pbar.update(1)
+        else:
+            # No progress bar - just process files
             for pdf_file in pdf_files:
                 try:
                     result = self.analyze_pdf(str(pdf_file))
                     self.results.append(result)
                     
-                    # Update progress
-                    pbar.update(1)
-                    
                 except Exception as e:
                     self.logger.error(f"Failed to analyze {pdf_file}: {e}")
                     traceback.print_exc()
-                    # Still update progress even if file failed
-                    pbar.update(1)
         
         return self.results
     
@@ -348,6 +362,16 @@ class PDFAnalyzer:
             if result.recommended_package:
                 stats[result.recommended_package] = stats.get(result.recommended_package, 0) + 1
         return stats
+    
+    def _get_package_recommendation_stats_with_percentages(self) -> Dict[str, Tuple[int, float]]:
+        """Get package recommendation statistics with percentages."""
+        stats = self._get_package_recommendation_stats()
+        total = len(self.results)
+        
+        if total == 0:
+            return {pkg: (count, 0.0) for pkg, count in stats.items()}
+        
+        return {pkg: (count, (count / total) * 100) for pkg, count in stats.items()}
 
     def _format_problematic_file_details(self, result: PDFTestResult) -> List[str]:
         """Format detailed information for a problematic file."""
@@ -376,7 +400,7 @@ class PDFAnalyzer:
         
         return lines
 
-    def print_summary(self, output_file: str = None):
+    def print_summary(self, output_file: str = None, recommendation_only: bool = False):
         """Print a summary of the analysis results and optionally save to file."""
         # Default output file in info directory if not specified
         if output_file is None:
@@ -393,26 +417,26 @@ class PDFAnalyzer:
                 f.write(message)
             return
         
-        # Build summary content
-        summary_lines = [
+        # Always build full summary content for the file
+        full_summary_lines = [
             "\n" + "="*60,
             "PDF ANALYSIS SUMMARY",
             "="*60
         ]
         
         stats = self._get_summary_stats()
-        package_stats = self._get_package_recommendation_stats()
-        summary_lines.extend([
+        package_stats = self._get_package_recommendation_stats_with_percentages()
+        full_summary_lines.extend([
             f"Total PDF files analyzed: {stats['total']}",
             f"Excellent (0 errors): {stats['excellent']}",
             f"Good (1-3 errors): {stats['good']}",
             f"Problematic (4-8 errors): {stats['problematic']}",
             f"Failed (9+ errors): {stats['failed']}",
             f"\nPackage recommendations:",
-            f"  pypdf: {package_stats['pypdf']} files",
-            f"  PyMuPDF: {package_stats['PyMuPDF']} files",
-            f"  pdfplumber: {package_stats['pdfplumber']} files",
-            f"  Other: {package_stats['Other']} files",
+            f"  pypdf: {package_stats['pypdf'][0]} files ({package_stats['pypdf'][1]:.1f}%)",
+            f"  PyMuPDF: {package_stats['PyMuPDF'][0]} files ({package_stats['PyMuPDF'][1]:.1f}%)",
+            f"  pdfplumber: {package_stats['pdfplumber'][0]} files ({package_stats['pdfplumber'][1]:.1f}%)",
+            f"  Other: {package_stats['Other'][0]} files ({package_stats['Other'][1]:.1f}%)",
             f"\nLibraries available:",
             f"  pypdf: {'✓' if PYPDF_AVAILABLE else '✗'}",
             f"  PyMuPDF: {'✓' if PYMUPDF_AVAILABLE else '✗'}",
@@ -421,19 +445,33 @@ class PDFAnalyzer:
         
         problematic_files = [r for r in self.results if r.overall_score < 0.7]
         if problematic_files:
-            summary_lines.extend([
+            full_summary_lines.extend([
                 f"Total problematic files: {len(problematic_files)}",
                 f"\nDetailed analysis of problematic files:",
                 "-" * 50
             ])
             for result in problematic_files:
-                summary_lines.extend(self._format_problematic_file_details(result))
+                full_summary_lines.extend(self._format_problematic_file_details(result))
         
-        # Print to console and write to file
-        for line in summary_lines:
+        # Determine what to print to console
+        if recommendation_only:
+            # Show only recommended package and percentage
+            best_package = max(package_stats.items(), key=lambda x: x[1][0])
+            package_name, (count, percentage) = best_package
+            
+            console_lines = [
+                f"{package_name}: {count} files ({percentage:.1f}%)"
+            ]
+        else:
+            # Show full summary
+            console_lines = full_summary_lines
+        
+        # Print to console
+        for line in console_lines:
             print(line)
         
+        # Always write full summary to file
         with open(output_file, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(summary_lines))
+            f.write('\n'.join(full_summary_lines))
         
         self.logger.info(f"Summary saved to {output_file}")

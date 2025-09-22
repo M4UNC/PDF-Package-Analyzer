@@ -21,12 +21,14 @@ def main():
     parser.add_argument("--timeout", type=int, default=30, help="Timeout in seconds for each PDF library test (default: 30)")
     parser.add_argument("--limit", type=int, help="Limit the number of PDF documents to process (default: process all)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--quiet", nargs='?', const="all", choices=["progress", "logs", "all"], default=None, help="Quiet mode: 'progress' hides progress bar, 'logs' hides console logs, 'all' hides both (default: all when --quiet is used)")
+    parser.add_argument("--recommendation_only", action="store_true", help="Show only the recommended package and percentage of files it is recommended for")
     
     args = parser.parse_args()
     
     try:
         # Create analyzer (logging is set up in the constructor)
-        analyzer = PDFAnalyzer(args.books_dir, info_dir=args.info_dir, timeout_seconds=args.timeout, verbose=args.verbose, limit=args.limit)
+        analyzer = PDFAnalyzer(args.books_dir, info_dir=args.info_dir, timeout_seconds=args.timeout, verbose=args.verbose, limit=args.limit, quiet=args.quiet)
         logger = analyzer.logger
         
         # Analyze all PDFs
@@ -41,7 +43,7 @@ def main():
         report = analyzer.generate_report(args.report_output)
         
         # Print summary
-        analyzer.print_summary(args.summary_output)
+        analyzer.print_summary(args.summary_output, recommendation_only=args.recommendation_only)
         
         logger.info("PDF analysis completed successfully")
         
