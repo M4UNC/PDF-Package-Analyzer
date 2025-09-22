@@ -16,7 +16,7 @@ wheels/
 .vscode/
 
 # PDF files
-library/
+files/
 
 # Dev
 dev/

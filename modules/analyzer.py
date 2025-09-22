@@ -1,3 +1,14 @@
+# -----------------------------------------------------------------------------
+# Copyright (C) 2025 Jeff Luster, mailto:jeff.luster96@gmail.com
+# License: GNU AFFERO GPL 3.0, https://www.gnu.org/licenses/agpl-3.0.html
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# Full license text can be found in the file "COPYING.txt".
+# Full copyright text can be found in the file "main.py".
+# -----------------------------------------------------------------------------
+
 #!/usr/bin/env python3
 """
 Main PDF analyzer class.
@@ -12,33 +23,33 @@ from typing import Dict, List, Tuple, Any
 from datetime import datetime
 from tqdm import tqdm
 
-from models import PDFTestResult
-from pdf_libraries import (
+from .models import PDFTestResult
+from .pdf_libraries import (
     PYPDF_AVAILABLE, PYMUPDF_AVAILABLE, PDFPLUMBER_AVAILABLE,
     test_pypdf_internal, test_pymupdf_internal, test_pdfplumber_internal
 )
-from utils import run_with_timeout
+from .utils import run_with_timeout
 
 
 class PDFAnalyzer:
     """Main PDF analysis class."""
     
-    def __init__(self, books_dir: str = "library/books", info_dir: str = None, timeout_seconds: int = 30, verbose: bool = False, limit: int = None, quiet: str = None):
-        self.books_dir = Path(books_dir)
+    def __init__(self, docs_dir: str = "files/docs", info_dir: str = None, timeout_seconds: int = 30, verbose: bool = False, limit: int = None, quiet: str = None):
+        self.docs_dir = Path(docs_dir)
         self.results = []
         self.timeout_seconds = timeout_seconds
         self.limit = limit
         self.quiet = quiet
         
-        # Check if books directory exists
-        if not self.books_dir.exists():
-            raise FileNotFoundError(f"Books directory '{books_dir}' not found")
+        # Check if docs directory exists
+        if not self.docs_dir.exists():
+            raise FileNotFoundError(f"docs directory '{docs_dir}' not found")
         
-        # Set info directory - use provided path or default to one level above books directory
+        # Set info directory - use provided path or default to one level above docs directory
         if info_dir is not None:
             self.info_dir = Path(info_dir)
         else:
-            self.info_dir = self.books_dir.parent / f"{self.books_dir.name}-info"
+            self.info_dir = self.docs_dir.parent / f"{self.docs_dir.name}-info"
         self.info_dir.mkdir(exist_ok=True)
         
         # Setup logging with output in info directory
@@ -243,17 +254,17 @@ class PDFAnalyzer:
         result.recommendations = recommendations
     
     def analyze_all_pdfs(self) -> List[PDFTestResult]:
-        """Analyze all PDF files in the books directory."""
-        pdf_files = list(self.books_dir.glob("*.pdf"))
+        """Analyze all PDF files in the docs directory."""
+        pdf_files = list(self.docs_dir.glob("*.pdf"))
         
         if not pdf_files:
-            self.logger.warning(f"No PDF files found in {self.books_dir}")
+            self.logger.warning(f"No PDF files found in {self.docs_dir}")
             return []
         
         # Apply limit if specified
         if self.limit is not None:
             pdf_files = pdf_files[:self.limit]
-            self.logger.info(f"Found {len(list(self.books_dir.glob('*.pdf')))} PDF files total, processing first {len(pdf_files)} files")
+            self.logger.info(f"Found {len(list(self.docs_dir.glob('*.pdf')))} PDF files total, processing first {len(pdf_files)} files")
         else:
             self.logger.info(f"Found {len(pdf_files)} PDF files to analyze")
         
@@ -301,7 +312,7 @@ class PDFAnalyzer:
         
         report = {
             "analysis_timestamp": datetime.now().isoformat(),
-            "books_directory": str(self.books_dir),
+            "docs_directory": str(self.docs_dir),
             "total_files": len(self.results),
             "libraries_available": {
                 "pypdf": PYPDF_AVAILABLE,
