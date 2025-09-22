@@ -1,0 +1,12 @@
+# PDF Analyzer Dependencies
+# Install with: pip install -r requirements.txt
+# OR: uv add -r requirements.txt
+
+# Core PDF processing libraries
+pypdf>=3.0.0
+PyMuPDF>=1.23.0
+pdfplumber>=0.9.0
+
+# Progress bars and utilities
+tqdm>=4.65.0
+

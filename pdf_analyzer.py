@@ -22,6 +22,7 @@ import signal
 import time
 import io
 import contextlib
+from tqdm import tqdm
 
 # PDF processing libraries
 try:
@@ -77,7 +78,7 @@ class PDFTestResult:
 class PDFAnalyzer:
     """Main PDF analysis class."""
     
-    def __init__(self, books_dir: str = "books", timeout_seconds: int = 30, verbose: bool = False):
+    def __init__(self, books_dir: str = "library/books", info_dir: str = None, timeout_seconds: int = 30, verbose: bool = False):
         self.books_dir = Path(books_dir)
         self.results = []
         self.timeout_seconds = timeout_seconds
@@ -86,8 +87,11 @@ class PDFAnalyzer:
         if not self.books_dir.exists():
             raise FileNotFoundError(f"Books directory '{books_dir}' not found")
         
-        # Create info directory within books directory
-        self.info_dir = self.books_dir / "info"
+        # Set info directory - use provided path or default to one level above books directory
+        if info_dir is not None:
+            self.info_dir = Path(info_dir)
+        else:
+            self.info_dir = self.books_dir.parent / f"{self.books_dir.name}-info"
         self.info_dir.mkdir(exist_ok=True)
         
         # Setup logging with output in info directory
@@ -137,6 +141,86 @@ class PDFAnalyzer:
         
         return logger
     
+    def _create_base_result(self) -> Dict[str, Any]:
+        """Create a base result dictionary with default values."""
+        return {
+            "success": False,
+            "pages": 0,
+            "warnings": [],
+            "errors": [],
+            "text_length": 0,
+            "metadata": {},
+            "stdout_output": "",
+            "stderr_output": ""
+        }
+    
+    def _extract_pypdf_metadata(self, metadata) -> Dict[str, str]:
+        """Extract metadata from pypdf reader."""
+        if not metadata:
+            return {}
+        return {
+            "title": str(metadata.get("/Title", "")),
+            "author": str(metadata.get("/Author", "")),
+            "creator": str(metadata.get("/Creator", "")),
+            "producer": str(metadata.get("/Producer", "")),
+            "creation_date": str(metadata.get("/CreationDate", "")),
+            "modification_date": str(metadata.get("/ModDate", ""))
+        }
+    
+    def _extract_pymupdf_metadata(self, metadata) -> Dict[str, str]:
+        """Extract metadata from PyMuPDF document."""
+        if not metadata:
+            return {}
+        return {
+            "title": metadata.get("title", ""),
+            "author": metadata.get("author", ""),
+            "creator": metadata.get("creator", ""),
+            "producer": metadata.get("producer", ""),
+            "creation_date": metadata.get("creationDate", ""),
+            "modification_date": metadata.get("modDate", "")
+        }
+    
+    def _extract_pdfplumber_metadata(self, metadata) -> Dict[str, str]:
+        """Extract metadata from pdfplumber PDF."""
+        if not metadata:
+            return {}
+        return {
+            "title": metadata.get("Title", ""),
+            "author": metadata.get("Author", ""),
+            "creator": metadata.get("Creator", ""),
+            "producer": metadata.get("Producer", ""),
+            "creation_date": str(metadata.get("CreationDate", "")),
+            "modification_date": str(metadata.get("ModDate", ""))
+        }
+    
+    def _extract_text_pages(self, pages, errors: List[str], library_name: str) -> int:
+        """Extract text from pages and return total length."""
+        text_content = ""
+        for i, page in enumerate(pages):
+            try:
+                if library_name == "pypdf":
+                    text_content += page.extract_text()
+                elif library_name == "pymupdf":
+                    text_content += page.get_text()
+                elif library_name == "pdfplumber":
+                    text_content += page.extract_text() or ""
+            except Exception as e:
+                errors.append(f"Page {i+1} text extraction failed: {str(e)}")
+        return len(text_content)
+    
+    def _process_output_capture(self, result: Dict[str, Any], stdout_capture, stderr_capture):
+        """Process captured stdout and stderr output."""
+        result["stdout_output"] = stdout_capture.getvalue().strip()
+        result["stderr_output"] = stderr_capture.getvalue().strip()
+        
+        # Add error-like content to errors list
+        for output, prefix in [(result["stderr_output"], "stderr"), (result["stdout_output"], "stdout")]:
+            if output:
+                lines = [line.strip() for line in output.split('\n') if line.strip()]
+                for line in lines:
+                    if any(keyword in line.lower() for keyword in ['error', 'invalid', 'failed', 'exception', 'traceback']):
+                        result["errors"].append(f"{prefix}: {line}")
+
     def _run_with_timeout(self, func, *args, **kwargs) -> Dict[str, Any]:
         """Run a function with timeout using threading approach."""
         import threading
@@ -187,19 +271,9 @@ class PDFAnalyzer:
     
     def _test_pypdf_internal(self, file_path: str) -> Dict[str, Any]:
         """Internal method to test PDF with pypdf library (without timeout)."""
-        result = {
-            "success": False,
-            "pages": 0,
-            "warnings": [],
-            "errors": [],
-            "text_length": 0,
-            "metadata": {},
-            "stdout_output": "",
-            "stderr_output": ""
-        }
+        result = self._create_base_result()
         
         try:
-            # Capture warnings, stdout, and stderr
             import warnings
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
@@ -207,53 +281,16 @@ class PDFAnalyzer:
                 with self.capture_stdout_stderr() as (stdout_capture, stderr_capture):
                     with open(file_path, 'rb') as file:
                         reader = pypdf.PdfReader(file)
-                        
-                        # Basic info
                         result["pages"] = len(reader.pages)
+                        result["metadata"] = self._extract_pypdf_metadata(reader.metadata)
+                        result["text_length"] = self._extract_text_pages(reader.pages[:5], result["errors"], "pypdf")
                         
-                        # Extract metadata
-                        if reader.metadata:
-                            result["metadata"] = {
-                                "title": str(reader.metadata.get("/Title", "")),
-                                "author": str(reader.metadata.get("/Author", "")),
-                                "creator": str(reader.metadata.get("/Creator", "")),
-                                "producer": str(reader.metadata.get("/Producer", "")),
-                                "creation_date": str(reader.metadata.get("/CreationDate", "")),
-                                "modification_date": str(reader.metadata.get("/ModDate", ""))
-                            }
-                        
-                        # Extract text from first few pages to test
-                        text_content = ""
-                        for i, page in enumerate(reader.pages[:5]):  # Test first 5 pages
-                            try:
-                                text_content += page.extract_text()
-                            except Exception as e:
-                                result["errors"].append(f"Page {i+1} text extraction failed: {str(e)}")
-                        
-                        result["text_length"] = len(text_content)
-                        
-                        # Capture warnings
                         for warning in w:
                             result["warnings"].append(str(warning.message))
                         
                         result["success"] = True
                 
-                # Capture stdout and stderr output
-                result["stdout_output"] = stdout_capture.getvalue().strip()
-                result["stderr_output"] = stderr_capture.getvalue().strip()
-                
-                # Add stdout/stderr messages to errors if they contain error-like content
-                if result["stderr_output"]:
-                    stderr_lines = [line.strip() for line in result["stderr_output"].split('\n') if line.strip()]
-                    for line in stderr_lines:
-                        if any(keyword in line.lower() for keyword in ['error', 'invalid', 'failed', 'exception', 'traceback']):
-                            result["errors"].append(f"stderr: {line}")
-                
-                if result["stdout_output"]:
-                    stdout_lines = [line.strip() for line in result["stdout_output"].split('\n') if line.strip()]
-                    for line in stdout_lines:
-                        if any(keyword in line.lower() for keyword in ['error', 'invalid', 'failed', 'exception', 'traceback']):
-                            result["errors"].append(f"stdout: {line}")
+                self._process_output_capture(result, stdout_capture, stderr_capture)
                     
         except Exception as e:
             result["errors"].append(f"pypdf processing failed: {str(e)}")
@@ -270,66 +307,18 @@ class PDFAnalyzer:
     
     def _test_pymupdf_internal(self, file_path: str) -> Dict[str, Any]:
         """Internal method to test PDF with PyMuPDF (fitz) library (without timeout)."""
-        result = {
-            "success": False,
-            "pages": 0,
-            "warnings": [],
-            "errors": [],
-            "text_length": 0,
-            "metadata": {},
-            "stdout_output": "",
-            "stderr_output": ""
-        }
+        result = self._create_base_result()
         
         try:
             with self.capture_stdout_stderr() as (stdout_capture, stderr_capture):
                 doc = fitz.open(file_path)
-                
-                # Basic info
                 result["pages"] = doc.page_count
-                
-                # Extract metadata
-                metadata = doc.metadata
-                if metadata:
-                    result["metadata"] = {
-                        "title": metadata.get("title", ""),
-                        "author": metadata.get("author", ""),
-                        "creator": metadata.get("creator", ""),
-                        "producer": metadata.get("producer", ""),
-                        "creation_date": metadata.get("creationDate", ""),
-                        "modification_date": metadata.get("modDate", "")
-                    }
-                
-                # Extract text from first few pages
-                text_content = ""
-                for i in range(min(5, doc.page_count)):  # Test first 5 pages
-                    try:
-                        page = doc[i]
-                        text_content += page.get_text()
-                    except Exception as e:
-                        result["errors"].append(f"Page {i+1} text extraction failed: {str(e)}")
-                
-                result["text_length"] = len(text_content)
+                result["metadata"] = self._extract_pymupdf_metadata(doc.metadata)
+                result["text_length"] = self._extract_text_pages([doc[i] for i in range(min(5, doc.page_count))], result["errors"], "pymupdf")
                 result["success"] = True
-                
                 doc.close()
             
-            # Capture stdout and stderr output
-            result["stdout_output"] = stdout_capture.getvalue().strip()
-            result["stderr_output"] = stderr_capture.getvalue().strip()
-            
-            # Add stdout/stderr messages to errors if they contain error-like content
-            if result["stderr_output"]:
-                stderr_lines = [line.strip() for line in result["stderr_output"].split('\n') if line.strip()]
-                for line in stderr_lines:
-                    if any(keyword in line.lower() for keyword in ['error', 'invalid', 'failed', 'exception', 'traceback']):
-                        result["errors"].append(f"stderr: {line}")
-            
-            if result["stdout_output"]:
-                stdout_lines = [line.strip() for line in result["stdout_output"].split('\n') if line.strip()]
-                for line in stdout_lines:
-                    if any(keyword in line.lower() for keyword in ['error', 'invalid', 'failed', 'exception', 'traceback']):
-                        result["errors"].append(f"stdout: {line}")
+            self._process_output_capture(result, stdout_capture, stderr_capture)
             
         except Exception as e:
             result["errors"].append(f"PyMuPDF processing failed: {str(e)}")
@@ -346,61 +335,17 @@ class PDFAnalyzer:
     
     def _test_pdfplumber_internal(self, file_path: str) -> Dict[str, Any]:
         """Internal method to test PDF with pdfplumber library (without timeout)."""
-        result = {
-            "success": False,
-            "pages": 0,
-            "warnings": [],
-            "errors": [],
-            "text_length": 0,
-            "metadata": {},
-            "stdout_output": "",
-            "stderr_output": ""
-        }
+        result = self._create_base_result()
         
         try:
             with self.capture_stdout_stderr() as (stdout_capture, stderr_capture):
                 with pdfplumber.open(file_path) as pdf:
-                    # Basic info
                     result["pages"] = len(pdf.pages)
-                    
-                    # Extract metadata
-                    if pdf.metadata:
-                        result["metadata"] = {
-                            "title": pdf.metadata.get("Title", ""),
-                            "author": pdf.metadata.get("Author", ""),
-                            "creator": pdf.metadata.get("Creator", ""),
-                            "producer": pdf.metadata.get("Producer", ""),
-                            "creation_date": str(pdf.metadata.get("CreationDate", "")),
-                            "modification_date": str(pdf.metadata.get("ModDate", ""))
-                        }
-                    
-                    # Extract text from first few pages
-                    text_content = ""
-                    for i, page in enumerate(pdf.pages[:5]):  # Test first 5 pages
-                        try:
-                            text_content += page.extract_text() or ""
-                        except Exception as e:
-                            result["errors"].append(f"Page {i+1} text extraction failed: {str(e)}")
-                    
-                    result["text_length"] = len(text_content)
+                    result["metadata"] = self._extract_pdfplumber_metadata(pdf.metadata)
+                    result["text_length"] = self._extract_text_pages(pdf.pages[:5], result["errors"], "pdfplumber")
                     result["success"] = True
             
-            # Capture stdout and stderr output
-            result["stdout_output"] = stdout_capture.getvalue().strip()
-            result["stderr_output"] = stderr_capture.getvalue().strip()
-            
-            # Add stdout/stderr messages to errors if they contain error-like content
-            if result["stderr_output"]:
-                stderr_lines = [line.strip() for line in result["stderr_output"].split('\n') if line.strip()]
-                for line in stderr_lines:
-                    if any(keyword in line.lower() for keyword in ['error', 'invalid', 'failed', 'exception', 'traceback']):
-                        result["errors"].append(f"stderr: {line}")
-            
-            if result["stdout_output"]:
-                stdout_lines = [line.strip() for line in result["stdout_output"].split('\n') if line.strip()]
-                for line in stdout_lines:
-                    if any(keyword in line.lower() for keyword in ['error', 'invalid', 'failed', 'exception', 'traceback']):
-                        result["errors"].append(f"stdout: {line}")
+            self._process_output_capture(result, stdout_capture, stderr_capture)
                 
         except Exception as e:
             result["errors"].append(f"pdfplumber processing failed: {str(e)}")
@@ -415,9 +360,24 @@ class PDFAnalyzer:
         
         return self._run_with_timeout(self._test_pdfplumber_internal, file_path)
     
-    def analyze_pdf(self, file_path: str) -> PDFTestResult:
+    def analyze_pdf(self, file_path: str, show_progress: bool = False) -> PDFTestResult:
         """Analyze a single PDF file with all available libraries."""
-        self.logger.info(f"Analyzing: {os.path.basename(file_path)}")
+        # Log to file only (not console) for detailed tracking
+        # Create a file-only logger for this specific message
+        file_logger = logging.getLogger(f"{__name__}.file_only")
+        file_logger.setLevel(logging.INFO)
+        file_logger.handlers.clear()
+        file_logger.propagate = False  # Prevent propagation to parent logger
+        
+        # Add only file handler
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        log_file = self.info_dir / 'pdf_test_results.log'
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(formatter)
+        file_logger.addHandler(file_handler)
+        
+        file_logger.info(f"Analyzing: {os.path.basename(file_path)}")
         
         result = PDFTestResult(file_path)
         
@@ -436,56 +396,39 @@ class PDFAnalyzer:
         
         return result
     
+    def _evaluate_library_result(self, lib_result: Dict[str, Any], lib_name: str) -> Tuple[float, List[str], int]:
+        """Evaluate a single library result and return (score, issues, timeout_count)."""
+        issues = []
+        timeout_count = 0
+        
+        if lib_result.get("success"):
+            score = 1.0
+            if lib_result.get("warnings"):
+                issues.append(f"{lib_name}: {len(lib_result['warnings'])} warnings")
+            if lib_result.get("errors"):
+                issues.append(f"{lib_name}: {len(lib_result['errors'])} errors")
+        else:
+            score = 0.0
+            if lib_result.get("timeout"):
+                issues.append(f"{lib_name}: Timed out after {self.timeout_seconds} seconds")
+                timeout_count = 1
+            else:
+                issues.append(f"{lib_name}: Failed - {lib_result.get('error', 'Unknown error')}")
+        
+        return score, issues, timeout_count
+
     def _evaluate_pdf(self, result: PDFTestResult):
         """Evaluate PDF quality and generate recommendations."""
         scores = []
         issues = []
         timeout_count = 0
         
-        # Evaluate pypdf results
-        if result.pypdf_result.get("success"):
-            scores.append(1.0)
-            if result.pypdf_result.get("warnings"):
-                issues.append(f"pypdf: {len(result.pypdf_result['warnings'])} warnings")
-            if result.pypdf_result.get("errors"):
-                issues.append(f"pypdf: {len(result.pypdf_result['errors'])} errors")
-        else:
-            scores.append(0.0)
-            if result.pypdf_result.get("timeout"):
-                issues.append(f"pypdf: Timed out after {self.timeout_seconds} seconds")
-                timeout_count += 1
-            else:
-                issues.append(f"pypdf: Failed - {result.pypdf_result.get('error', 'Unknown error')}")
-        
-        # Evaluate PyMuPDF results
-        if result.pymupdf_result.get("success"):
-            scores.append(1.0)
-            if result.pymupdf_result.get("warnings"):
-                issues.append(f"PyMuPDF: {len(result.pymupdf_result['warnings'])} warnings")
-            if result.pymupdf_result.get("errors"):
-                issues.append(f"PyMuPDF: {len(result.pymupdf_result['errors'])} errors")
-        else:
-            scores.append(0.0)
-            if result.pymupdf_result.get("timeout"):
-                issues.append(f"PyMuPDF: Timed out after {self.timeout_seconds} seconds")
-                timeout_count += 1
-            else:
-                issues.append(f"PyMuPDF: Failed - {result.pymupdf_result.get('error', 'Unknown error')}")
-        
-        # Evaluate pdfplumber results
-        if result.pdfplumber_result.get("success"):
-            scores.append(1.0)
-            if result.pdfplumber_result.get("warnings"):
-                issues.append(f"pdfplumber: {len(result.pdfplumber_result['warnings'])} warnings")
-            if result.pdfplumber_result.get("errors"):
-                issues.append(f"pdfplumber: {len(result.pdfplumber_result['errors'])} errors")
-        else:
-            scores.append(0.0)
-            if result.pdfplumber_result.get("timeout"):
-                issues.append(f"pdfplumber: Timed out after {self.timeout_seconds} seconds")
-                timeout_count += 1
-            else:
-                issues.append(f"pdfplumber: Failed - {result.pdfplumber_result.get('error', 'Unknown error')}")
+        # Evaluate each library
+        for lib_name, lib_result in [("pypdf", result.pypdf_result), ("PyMuPDF", result.pymupdf_result), ("pdfplumber", result.pdfplumber_result)]:
+            score, lib_issues, lib_timeouts = self._evaluate_library_result(lib_result, lib_name)
+            scores.append(score)
+            issues.extend(lib_issues)
+            timeout_count += lib_timeouts
         
         # Calculate overall score
         result.overall_score = sum(scores) / len(scores) if scores else 0.0
@@ -498,10 +441,7 @@ class PDFAnalyzer:
             recommendations.append(f"PDF processing timed out for {timeout_count} library(ies) - consider increasing timeout or file may be corrupted")
         
         if result.overall_score == 0.0:
-            if timeout_count > 0:
-                recommendations.append("PDF appears to be corrupted or unreadable (timeouts suggest processing issues)")
-            else:
-                recommendations.append("PDF appears to be corrupted or unreadable")
+            recommendations.append("PDF appears to be corrupted or unreadable" + (" (timeouts suggest processing issues)" if timeout_count > 0 else ""))
         elif result.overall_score < 0.5:
             recommendations.append("PDF has significant issues - consider replacing")
         elif result.overall_score < 1.0:
@@ -528,13 +468,24 @@ class PDFAnalyzer:
         
         self.logger.info(f"Found {len(pdf_files)} PDF files to analyze")
         
-        for pdf_file in pdf_files:
-            try:
-                result = self.analyze_pdf(str(pdf_file))
-                self.results.append(result)
-            except Exception as e:
-                self.logger.error(f"Failed to analyze {pdf_file}: {e}")
-                traceback.print_exc()
+        # Use tqdm for progress bar
+        with tqdm(total=len(pdf_files), desc="Analyzing PDFs", unit="file") as pbar:
+            for pdf_file in pdf_files:
+                try:
+                    # Update progress bar with current filename
+                    pbar.set_postfix(file=os.path.basename(pdf_file)[:30] + "..." if len(os.path.basename(pdf_file)) > 30 else os.path.basename(pdf_file))
+                    
+                    result = self.analyze_pdf(str(pdf_file))
+                    self.results.append(result)
+                    
+                    # Update progress
+                    pbar.update(1)
+                    
+                except Exception as e:
+                    self.logger.error(f"Failed to analyze {pdf_file}: {e}")
+                    traceback.print_exc()
+                    # Still update progress even if file failed
+                    pbar.update(1)
         
         return self.results
     
@@ -593,64 +544,106 @@ class PDFAnalyzer:
         self.logger.info(f"Analysis report saved to {output_file}")
         return report
     
-    def print_summary(self):
-        """Print a summary of the analysis results."""
+    def _get_summary_stats(self) -> Dict[str, int]:
+        """Get summary statistics for the analysis results."""
+        return {
+            "total": len(self.results),
+            "excellent": len([r for r in self.results if r.overall_score == 1.0]),
+            "good": len([r for r in self.results if 0.7 <= r.overall_score < 1.0]),
+            "problematic": len([r for r in self.results if 0.3 <= r.overall_score < 0.7]),
+            "failed": len([r for r in self.results if r.overall_score < 0.3])
+        }
+
+    def _format_problematic_file_details(self, result: PDFTestResult) -> List[str]:
+        """Format detailed information for a problematic file."""
+        lines = [
+            f"\nFile: {result.filename}",
+            f"Score: {result.overall_score:.1%}",
+            f"Size: {result.file_size:,} bytes",
+            "Issues:"
+        ]
+        
+        for issue in result.issues:
+            lines.append(f"  - {issue}")
+        
+        # Show detailed errors for each library
+        for lib_name, lib_result in [("pypdf", result.pypdf_result), ("PyMuPDF", result.pymupdf_result), ("pdfplumber", result.pdfplumber_result)]:
+            if lib_result.get("errors"):
+                lines.append(f"\n{lib_name} detailed errors:")
+                for error in lib_result["errors"][:10]:  # Show first 10 errors
+                    lines.append(f"  - {error}")
+                if len(lib_result["errors"]) > 10:
+                    lines.append(f"  ... and {len(lib_result['errors']) - 10} more errors")
+        
+        lines.append("Recommendations:")
+        for rec in result.recommendations:
+            lines.append(f"  - {rec}")
+        
+        return lines
+
+    def print_summary(self, output_file: str = None):
+        """Print a summary of the analysis results and optionally save to file."""
+        # Default output file in info directory if not specified
+        if output_file is None:
+            output_file = self.info_dir / "pdf_analysis_summary.txt"
+        else:
+            # If relative path, make it relative to info directory
+            if not os.path.isabs(output_file):
+                output_file = self.info_dir / output_file
+        
         if not self.results:
-            print("No PDF files analyzed.")
+            message = "No PDF files analyzed."
+            print(message)
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write(message)
             return
         
-        print("\n" + "="*60)
-        print("PDF ANALYSIS SUMMARY")
-        print("="*60)
+        # Build summary content
+        summary_lines = [
+            "\n" + "="*60,
+            "PDF ANALYSIS SUMMARY",
+            "="*60
+        ]
         
-        total_files = len(self.results)
-        excellent = len([r for r in self.results if r.overall_score == 1.0])
-        good = len([r for r in self.results if 0.7 <= r.overall_score < 1.0])
-        problematic = len([r for r in self.results if 0.3 <= r.overall_score < 0.7])
-        failed = len([r for r in self.results if r.overall_score < 0.3])
-        
-        print(f"Total PDF files analyzed: {total_files}")
-        print(f"Excellent (100%): {excellent}")
-        print(f"Good (70-99%): {good}")
-        print(f"Problematic (30-69%): {problematic}")
-        print(f"Failed (<30%): {failed}")
-        
-        print(f"\nLibraries available:")
-        print(f"  pypdf: {'✓' if PYPDF_AVAILABLE else '✗'}")
-        print(f"  PyMuPDF: {'✓' if PYMUPDF_AVAILABLE else '✗'}")
-        print(f"  pdfplumber: {'✓' if PDFPLUMBER_AVAILABLE else '✗'}")
+        stats = self._get_summary_stats()
+        summary_lines.extend([
+            f"Total PDF files analyzed: {stats['total']}",
+            f"Excellent (100%): {stats['excellent']}",
+            f"Good (70-99%): {stats['good']}",
+            f"Problematic (30-69%): {stats['problematic']}",
+            f"Failed (<30%): {stats['failed']}",
+            f"\nLibraries available:",
+            f"  pypdf: {'✓' if PYPDF_AVAILABLE else '✗'}",
+            f"  PyMuPDF: {'✓' if PYMUPDF_AVAILABLE else '✗'}",
+            f"  pdfplumber: {'✓' if PDFPLUMBER_AVAILABLE else '✗'}"
+        ])
         
         problematic_files = [r for r in self.results if r.overall_score < 0.7]
         if problematic_files:
-            print(f"Total problematic files: {len(problematic_files)}")
-            print(f"\nDetailed analysis of problematic files:")
-            print("-" * 50)
+            summary_lines.extend([
+                f"Total problematic files: {len(problematic_files)}",
+                f"\nDetailed analysis of problematic files:",
+                "-" * 50
+            ])
             for result in problematic_files:
-                print(f"\nFile: {result.filename}")
-                print(f"Score: {result.overall_score:.1%}")
-                print(f"Size: {result.file_size:,} bytes")
-                print("Issues:")
-                for issue in result.issues:
-                    print(f"  - {issue}")
-                
-                # Show detailed errors for each library
-                for lib_name, lib_result in [("pypdf", result.pypdf_result), ("PyMuPDF", result.pymupdf_result), ("pdfplumber", result.pdfplumber_result)]:
-                    if lib_result.get("errors"):
-                        print(f"\n{lib_name} detailed errors:")
-                        for error in lib_result["errors"][:10]:  # Show first 10 errors
-                            print(f"  - {error}")
-                        if len(lib_result["errors"]) > 10:
-                            print(f"  ... and {len(lib_result['errors']) - 10} more errors")
-                
-                print("Recommendations:")
-                for rec in result.recommendations:
-                    print(f"  - {rec}")
+                summary_lines.extend(self._format_problematic_file_details(result))
+        
+        # Print to console and write to file
+        for line in summary_lines:
+            print(line)
+        
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(summary_lines))
+        
+        self.logger.info(f"Summary saved to {output_file}")
 
 def main():
     """Main function."""
     parser = argparse.ArgumentParser(description="Analyze PDF documents for quality and compatibility")
-    parser.add_argument("--books-dir", default="books", help="Directory containing PDF files")
-    parser.add_argument("--output", default="pdf_analysis_report.json", help="Output report file")
+    parser.add_argument("--books_dir", default="library/books", help="Directory containing PDF files")
+    parser.add_argument("--info_dir", help="Directory to store analysis results and logs (default: {books_dir}-info)")
+    parser.add_argument("--report_output", default="pdf_analysis_report.json", help="Output report file")
+    parser.add_argument("--summary_output", help="Output summary file")
     parser.add_argument("--timeout", type=int, default=30, help="Timeout in seconds for each PDF library test (default: 30)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
     
@@ -658,7 +651,7 @@ def main():
     
     try:
         # Create analyzer (logging is set up in the constructor)
-        analyzer = PDFAnalyzer(args.books_dir, timeout_seconds=args.timeout, verbose=args.verbose)
+        analyzer = PDFAnalyzer(args.books_dir, info_dir=args.info_dir, timeout_seconds=args.timeout, verbose=args.verbose)
         logger = analyzer.logger
         
         # Analyze all PDFs
@@ -670,10 +663,10 @@ def main():
             return
         
         # Generate report
-        report = analyzer.generate_report(args.output)
+        report = analyzer.generate_report(args.report_output)
         
         # Print summary
-        analyzer.print_summary()
+        analyzer.print_summary(args.summary_output)
         
         logger.info("PDF analysis completed successfully")
         
