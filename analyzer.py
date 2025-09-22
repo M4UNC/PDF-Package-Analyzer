@@ -151,20 +151,68 @@ class PDFAnalyzer:
 
     def _evaluate_pdf(self, result: PDFTestResult):
         """Evaluate PDF quality and generate recommendations."""
-        scores = []
         issues = []
         timeout_count = 0
+        total_errors = 0
+        package_errors = {}
         
-        # Evaluate each library
+        # Evaluate each library and count errors
         for lib_name, lib_result in [("pypdf", result.pypdf_result), ("PyMuPDF", result.pymupdf_result), ("pdfplumber", result.pdfplumber_result)]:
-            score, lib_issues, lib_timeouts = self._evaluate_library_result(lib_result, lib_name)
-            scores.append(score)
-            issues.extend(lib_issues)
-            timeout_count += lib_timeouts
+            if lib_result:
+                # Count errors for this package
+                error_count = 0
+                if lib_result.get("success"):
+                    # Count warnings and errors
+                    error_count += len(lib_result.get("warnings", []))
+                    error_count += len(lib_result.get("errors", []))
+                else:
+                    # Failed libraries count as 5 errors each
+                    error_count = 5
+                    if lib_result.get("timeout"):
+                        issues.append(f"{lib_name}: Timed out after {self.timeout_seconds} seconds")
+                        timeout_count += 1
+                    else:
+                        issues.append(f"{lib_name}: Failed - {lib_result.get('error', 'Unknown error')}")
+                
+                package_errors[lib_name] = error_count
+                total_errors += error_count
+                
+                # Add detailed issues for successful libraries
+                if lib_result.get("success"):
+                    if lib_result.get("warnings"):
+                        issues.append(f"{lib_name}: {len(lib_result['warnings'])} warnings")
+                    if lib_result.get("errors"):
+                        issues.append(f"{lib_name}: {len(lib_result['errors'])} errors")
         
-        # Calculate overall score
-        result.overall_score = sum(scores) / len(scores) if scores else 0.0
         result.issues = issues
+        
+        # Calculate overall score based on error count
+        if total_errors == 0:
+            result.overall_score = 1.0  # Excellent
+        elif total_errors <= 3:
+            result.overall_score = 0.8  # Good
+        elif total_errors <= 8:
+            result.overall_score = 0.5  # Problematic
+        else:
+            result.overall_score = 0.0  # Failed
+        
+        # Determine recommended package
+        if total_errors == 0:
+            # No errors - default to pypdf
+            result.recommended_package = "pypdf"
+        else:
+            # Find package with least errors
+            min_errors = min(package_errors.values())
+            best_packages = [pkg for pkg, errors in package_errors.items() if errors == min_errors]
+            
+            if min_errors == 5:  # All packages failed
+                result.recommended_package = "Other"
+            else:
+                # Prefer pypdf if it's among the best, otherwise use the first best
+                if "pypdf" in best_packages:
+                    result.recommended_package = "pypdf"
+                else:
+                    result.recommended_package = best_packages[0]
         
         # Generate recommendations
         recommendations = []
@@ -174,16 +222,18 @@ class PDFAnalyzer:
         
         if result.overall_score == 0.0:
             recommendations.append("PDF appears to be corrupted or unreadable" + (" (timeouts suggest processing issues)" if timeout_count > 0 else ""))
-        elif result.overall_score < 0.5:
+        elif result.overall_score == 0.5:
             recommendations.append("PDF has significant issues - consider replacing")
-        elif result.overall_score < 1.0:
+        elif result.overall_score == 0.8:
             recommendations.append("PDF has minor issues but should work")
         else:
             recommendations.append("PDF appears to be in good condition")
         
-        # Library-specific recommendations
-        if result.pypdf_result.get("warnings") and len(result.pypdf_result["warnings"]) > 10:
-            recommendations.append("Consider using PyMuPDF or pdfplumber instead of pypdf")
+        # Add package-specific recommendations
+        if result.recommended_package != "Other":
+            recommendations.append(f"Recommended package: {result.recommended_package}")
+        else:
+            recommendations.append("All packages failed - consider using alternative PDF processing tools")
         
         if result.file_size > 50 * 1024 * 1024:  # 50MB
             recommendations.append("Large file size may impact processing speed")
@@ -246,9 +296,9 @@ class PDFAnalyzer:
             },
             "summary": {
                 "excellent_pdfs": len([r for r in self.results if r.overall_score == 1.0]),
-                "good_pdfs": len([r for r in self.results if 0.7 <= r.overall_score < 1.0]),
-                "problematic_pdfs": len([r for r in self.results if 0.3 <= r.overall_score < 0.7]),
-                "failed_pdfs": len([r for r in self.results if r.overall_score < 0.3])
+                "good_pdfs": len([r for r in self.results if r.overall_score == 0.8]),
+                "problematic_pdfs": len([r for r in self.results if r.overall_score == 0.5]),
+                "failed_pdfs": len([r for r in self.results if r.overall_score == 0.0])
             },
             "detailed_results": []
         }
@@ -262,6 +312,7 @@ class PDFAnalyzer:
                 "overall_score": result.overall_score,
                 "issues": result.issues,
                 "recommendations": result.recommendations,
+                "recommended_package": result.recommended_package,
                 "pypdf_result": result.pypdf_result,
                 "pymupdf_result": result.pymupdf_result,
                 "pdfplumber_result": result.pdfplumber_result
@@ -285,10 +336,18 @@ class PDFAnalyzer:
         return {
             "total": len(self.results),
             "excellent": len([r for r in self.results if r.overall_score == 1.0]),
-            "good": len([r for r in self.results if 0.7 <= r.overall_score < 1.0]),
-            "problematic": len([r for r in self.results if 0.3 <= r.overall_score < 0.7]),
-            "failed": len([r for r in self.results if r.overall_score < 0.3])
+            "good": len([r for r in self.results if r.overall_score == 0.8]),
+            "problematic": len([r for r in self.results if r.overall_score == 0.5]),
+            "failed": len([r for r in self.results if r.overall_score == 0.0])
         }
+    
+    def _get_package_recommendation_stats(self) -> Dict[str, int]:
+        """Get package recommendation statistics."""
+        stats = {"pypdf": 0, "PyMuPDF": 0, "pdfplumber": 0, "Other": 0}
+        for result in self.results:
+            if result.recommended_package:
+                stats[result.recommended_package] = stats.get(result.recommended_package, 0) + 1
+        return stats
 
     def _format_problematic_file_details(self, result: PDFTestResult) -> List[str]:
         """Format detailed information for a problematic file."""
@@ -342,12 +401,18 @@ class PDFAnalyzer:
         ]
         
         stats = self._get_summary_stats()
+        package_stats = self._get_package_recommendation_stats()
         summary_lines.extend([
             f"Total PDF files analyzed: {stats['total']}",
-            f"Excellent (100%): {stats['excellent']}",
-            f"Good (70-99%): {stats['good']}",
-            f"Problematic (30-69%): {stats['problematic']}",
-            f"Failed (<30%): {stats['failed']}",
+            f"Excellent (0 errors): {stats['excellent']}",
+            f"Good (1-3 errors): {stats['good']}",
+            f"Problematic (4-8 errors): {stats['problematic']}",
+            f"Failed (9+ errors): {stats['failed']}",
+            f"\nPackage recommendations:",
+            f"  pypdf: {package_stats['pypdf']} files",
+            f"  PyMuPDF: {package_stats['PyMuPDF']} files",
+            f"  pdfplumber: {package_stats['pdfplumber']} files",
+            f"  Other: {package_stats['Other']} files",
             f"\nLibraries available:",
             f"  pypdf: {'✓' if PYPDF_AVAILABLE else '✗'}",
             f"  PyMuPDF: {'✓' if PYMUPDF_AVAILABLE else '✗'}",

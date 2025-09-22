@@ -23,6 +23,7 @@ class PDFTestResult:
         self.pdfplumber_result = {}
         
         # Overall assessment
-        self.overall_score = 0.0
+        self.overall_score = 0
         self.issues = []
         self.recommendations = []
+        self.recommended_package = None
